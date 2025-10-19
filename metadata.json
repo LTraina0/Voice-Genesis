@@ -1,0 +1,7 @@
+{
+  "name": "Voice Genesis",
+  "description": "An advanced application for text-to-speech conversion and voice recreation. Generate speech from text or provide an audio sample to have its content spoken by a different AI voice.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
