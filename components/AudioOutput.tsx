@@ -9,6 +9,7 @@ interface AudioOutputProps {
   error: string | null;
   status: string | null;
   onSaveClonedVoice: () => void;
+  isLivePreviewing?: boolean;
 }
 
 const DownloadIcon = () => (
@@ -23,7 +24,7 @@ const SaveIcon = () => (
     </svg>
 );
 
-export const AudioOutput: React.FC<AudioOutputProps> = ({ outputAudio, inputAudioUrl, isLoading, error, status, onSaveClonedVoice }) => {
+export const AudioOutput: React.FC<AudioOutputProps> = ({ outputAudio, inputAudioUrl, isLoading, error, status, onSaveClonedVoice, isLivePreviewing }) => {
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -87,6 +88,15 @@ export const AudioOutput: React.FC<AudioOutputProps> = ({ outputAudio, inputAudi
            >
             <DownloadIcon /> Download Audio
            </a>
+        </div>
+      );
+    }
+
+    if (isLivePreviewing) {
+       return (
+        <div className="flex flex-col items-center justify-center h-full text-green-400">
+          <p className="font-medium">Live Preview Active</p>
+          <p className="text-sm mt-1 text-gray-400 text-center">Audio will play automatically as you type.</p>
         </div>
       );
     }

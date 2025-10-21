@@ -49,17 +49,18 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onReuse, on
                     </p>
                     <span className="text-xs text-gray-500 flex-shrink-0 ml-4">{formatTimestamp(item.timestamp)}</span>
                 </div>
-              <div className="mt-3 flex items-center justify-between">
-                <audio src={item.outputAudio.url} controls className="w-1/2 h-8" />
-                <div className="flex items-center space-x-2">
-                   <button
+              {item.outputAudio ? (
+                <div className="mt-3 flex items-center justify-between">
+                  <audio src={item.outputAudio.url} controls className="w-1/2 h-8" />
+                  <div className="flex items-center space-x-2">
+                    <button
                         onClick={() => onReuse(item)}
                         className="p-2 rounded-full bg-blue-600/50 hover:bg-blue-500 text-white transition-colors"
                         title="Reuse Settings"
                     >
                         <ReuseIcon />
                     </button>
-                   <a
+                    <a
                         href={item.outputAudio.url}
                         download={`voice-genesis-${item.id}.wav`}
                         className="p-2 block rounded-full bg-green-600/50 hover:bg-green-500 text-white transition-colors"
@@ -67,8 +68,22 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onReuse, on
                     >
                         <DownloadIcon />
                     </a>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold bg-yellow-900/50 text-yellow-300 py-1 px-2 rounded">DRAFT</span>
+                  <div className="flex items-center space-x-2">
+                      <button
+                          onClick={() => onReuse(item)}
+                          className="p-2 rounded-full bg-blue-600/50 hover:bg-blue-500 text-white transition-colors"
+                          title="Load Draft"
+                      >
+                          <ReuseIcon />
+                      </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}

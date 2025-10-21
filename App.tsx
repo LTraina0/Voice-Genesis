@@ -47,7 +47,7 @@ export default function App(): React.ReactElement {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'dialogue'>('text');
+  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'dialogue' | 'live'>('text');
   
   const [audioData, setAudioData] = useState<{ blob: Blob; mimeType: string; } | null>(null);
   const [inputAudioUrl, setInputAudioUrl] = useState<string | null>(null);
@@ -57,6 +57,7 @@ export default function App(): React.ReactElement {
   
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
+  const [isLivePreviewing, setIsLivePreviewing] = useState(false);
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -69,12 +70,23 @@ export default function App(): React.ReactElement {
   });
 
   const audioContextRef = useRef<AudioContext | null>(null);
+  const processedTextLength = useRef(0);
+  const debounceTimer = useRef<number | null>(null);
+  const nextAudioStartTime = useRef(0);
+  const selectedVoiceRef = useRef(selectedVoice);
+  const selectedEmotionRef = useRef(selectedEmotion);
+  const customStyleRef = useRef(customStyle);
+
   const getAudioContext = () => {
     if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     return audioContextRef.current;
   };
+
+  useEffect(() => { selectedVoiceRef.current = selectedVoice; }, [selectedVoice]);
+  useEffect(() => { selectedEmotionRef.current = selectedEmotion; }, [selectedEmotion]);
+  useEffect(() => { customStyleRef.current = customStyle; }, [customStyle]);
 
   useEffect(() => {
     const customVoices = voices.filter(v => v.isCustom);
@@ -125,7 +137,130 @@ export default function App(): React.ReactElement {
       setInputAudioUrl(null);
     }
   }, [audioData]);
+
+  const processAndPlayChunk = useCallback(async (chunk: string, voice: Voice, emotion: Emotion, customStyle: string) => {
+    if (!chunk.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+        setStatus(`Generating: "${chunk.slice(0, 20)}..."`);
+        const styleToUse = emotion.value !== 'custom' ? emotion.value : customStyle || 'neutrally';
+        const voiceToUse = voice.baseVoiceId || voice.id;
+        
+        const audioBase64 = await generateSpeech(chunk, voiceToUse, styleToUse);
+        const decodedData = decodeBase64(audioBase64);
+        
+        const audioCtx = getAudioContext();
+        const audioBuffer = await decodePcmAudioData(decodedData, audioCtx);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        
+        const currentTime = audioCtx.currentTime;
+        const startTime = Math.max(currentTime, nextAudioStartTime.current);
+        
+        source.start(startTime);
+        nextAudioStartTime.current = startTime + audioBuffer.duration;
+
+    } catch (err) {
+        console.error('Error during live generation:', err);
+        const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+        setError(`Live generation failed. ${message}`);
+        setIsLivePreviewing(false);
+    } finally {
+        setIsLoading(false);
+        setStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLivePreviewing || inputMode !== 'live') {
+      return;
+    }
+
+    if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+    }
+
+    debounceTimer.current = window.setTimeout(() => {
+        const unprocessedText = text.substring(processedTextLength.current);
+        if (unprocessedText.trim().length > 0) {
+            processAndPlayChunk(unprocessedText, selectedVoiceRef.current, selectedEmotionRef.current, customStyleRef.current);
+            processedTextLength.current = text.length;
+        }
+    }, 800);
+
+  }, [text, isLivePreviewing, inputMode, processAndPlayChunk]);
+
+  useEffect(() => {
+    if (inputMode !== 'live' && isLivePreviewing) {
+      setIsLivePreviewing(false);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    }
+  }, [inputMode, isLivePreviewing]);
+
+  const handleLivePreviewToggle = () => {
+    setIsLivePreviewing(prev => {
+        const isStarting = !prev;
+        if (isStarting) {
+            setError(null);
+            setOutputAudio(null);
+            processedTextLength.current = 0;
+            const audioCtx = getAudioContext();
+            nextAudioStartTime.current = audioCtx.currentTime;
+            
+            if (text.trim().length > 0) {
+                processAndPlayChunk(text.trim(), selectedVoice, selectedEmotion, customStyle);
+                processedTextLength.current = text.length;
+            }
+        } else {
+            if (debounceTimer.current) {
+                clearTimeout(debounceTimer.current);
+            }
+        }
+        return isStarting;
+    });
+  };
   
+  const handleSaveLiveDraft = () => {
+    if (!text.trim()) {
+      setError("Cannot save an empty draft.");
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    const newHistoryItem: HistoryItem = {
+      id: `hist_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      mode: 'live',
+      text: text,
+      voiceId: selectedVoice.id,
+      emotionValue: selectedEmotion.value,
+      customStyle: customStyle,
+      dialogueSpeakers: [],
+      isAdvanced: false,
+    };
+    setHistory(prev => [newHistoryItem, ...prev.slice(0, 9)]);
+    setStatus("Draft saved to history!");
+    setTimeout(() => setStatus(null), 3000);
+  };
+
+  const handleFinalizeLivePreview = () => {
+    if (isLivePreviewing) {
+      setIsLivePreviewing(false);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    }
+    setInputMode('text');
+    setTimeout(() => {
+      handleGenerate();
+    }, 100);
+  };
+
   const addCustomVoice = (name: string) => {
     const newVoice: Voice = {
       id: `custom_${Date.now()}`,
@@ -358,14 +493,17 @@ export default function App(): React.ReactElement {
     setDialogueSpeakers(item.dialogueSpeakers || []);
     setInputMode(item.mode);
     setIsAdvancedMode(item.isAdvanced);
-    setOutputAudio(item.outputAudio);
+    setOutputAudio(item.outputAudio || null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [voices]);
 
   useEffect(() => {
     return () => {
         if(outputAudio) URL.revokeObjectURL(outputAudio.url);
-        history.forEach(h => URL.revokeObjectURL(h.outputAudio.url));
+        history.forEach(h => {
+          if (h.outputAudio) URL.revokeObjectURL(h.outputAudio.url)
+        });
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, []);
 
@@ -400,6 +538,10 @@ export default function App(): React.ReactElement {
             setDialogueSpeakers={setDialogueSpeakers}
             isAdvancedMode={isAdvancedMode}
             setIsAdvancedMode={setIsAdvancedMode}
+            isLivePreviewing={isLivePreviewing}
+            onLivePreviewToggle={handleLivePreviewToggle}
+            onSaveLiveDraft={handleSaveLiveDraft}
+            onFinalizeLivePreview={handleFinalizeLivePreview}
           />
           <div className="flex flex-col space-y-8">
             <AudioOutput
@@ -409,6 +551,7 @@ export default function App(): React.ReactElement {
               error={error}
               status={status}
               onSaveClonedVoice={() => setShowSaveModal(true)}
+              isLivePreviewing={isLivePreviewing}
             />
              <HistoryPanel 
                 history={history} 

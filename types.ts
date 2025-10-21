@@ -40,12 +40,12 @@ export interface DialogueSpeaker {
 export interface HistoryItem {
   id: string;
   timestamp: string;
-  mode: 'text' | 'dialogue' | 'voice';
+  mode: 'text' | 'dialogue' | 'voice' | 'live';
   text: string;
   voiceId: string;
   emotionValue: string;
   customStyle: string;
   dialogueSpeakers: DialogueSpeaker[];
-  outputAudio: OutputAudio;
+  outputAudio?: OutputAudio;
   isAdvanced: boolean;
 }

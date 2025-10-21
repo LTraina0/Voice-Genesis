@@ -21,13 +21,17 @@ interface ControlsPanelProps {
   isLoading: boolean;
   onGenerate: () => void;
   onAnalyze: () => void;
-  inputMode: 'text' | 'voice' | 'dialogue';
-  setInputMode: (mode: 'text' | 'voice' | 'dialogue') => void;
+  inputMode: 'text' | 'voice' | 'dialogue' | 'live';
+  setInputMode: (mode: 'text' | 'voice' | 'dialogue' | 'live') => void;
   audioData: { blob: Blob; mimeType: string } | null;
   setAudioData: (data: { blob: Blob; mimeType: string } | null) => void;
   onManageVoices: () => void;
   dialogueSpeakers: DialogueSpeaker[];
   setDialogueSpeakers: (speakers: DialogueSpeaker[]) => void;
+  isLivePreviewing: boolean;
+  onLivePreviewToggle: () => void;
+  onSaveLiveDraft: () => void;
+  onFinalizeLivePreview: () => void;
 }
 
 const LoadingSpinner = () => (
@@ -101,10 +105,11 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   onManageVoices,
   dialogueSpeakers,
   setDialogueSpeakers,
+  isLivePreviewing,
+  onLivePreviewToggle,
+  onSaveLiveDraft,
+  onFinalizeLivePreview,
 }) => {
-
-  const isGenerateDisabled = isLoading || (inputMode !== 'voice' && !text.trim());
-  const isAnalyzeDisabled = isLoading || !audioData;
     
   const customVoices = voices.filter(v => v.isCustom);
 
@@ -122,6 +127,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   const renderCurrentMode = () => {
     switch (inputMode) {
       case 'voice':
+        const isAnalyzeDisabled = isLoading || !audioData;
         return (
           <div className="space-y-4">
             <VoiceInput setAudioData={setAudioData} disabled={isLoading} />
@@ -137,13 +143,24 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     const voice = voices.find(v => v.id === e.target.value);
                     if (voice) setSelectedVoice(voice);
                   }}
+                  disabled={isLoading}
                 >
                   {renderVoiceOptions(voices, customVoices, groupedStandardVoices)}
                 </select>
             </div>
+            <div className="pt-2">
+              <button
+                onClick={onAnalyze}
+                disabled={isAnalyzeDisabled}
+                className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
+              >
+                {isLoading ? <LoadingSpinner /> : 'Analyze Voice Style'}
+              </button>
+            </div>
           </div>
         );
       case 'dialogue':
+        const isGenerateDisabledDialogue = isLoading || !text.trim();
         const handleSpeakerVoiceChange = (speakerName: string, newVoiceId: string) => {
            setDialogueSpeakers(dialogueSpeakers.map(s => s.name === speakerName ? {...s, voiceId: newVoiceId} : s));
         };
@@ -160,6 +177,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder={"e.g.,\nMateus: Olá, como vai?\nClara: Estou bem, e você?"}
+                disabled={isLoading}
               />
                <p className="text-xs text-gray-500 mt-2">Format: `Speaker: Text`. One line per speaker turn.</p>
             </div>
@@ -176,18 +194,131 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                         className="w-full bg-gray-900/70 border border-gray-600 rounded-md p-2 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition duration-200 appearance-none col-span-2"
                         value={speaker.voiceId}
                         onChange={(e) => handleSpeakerVoiceChange(speaker.name, e.target.value)}
+                        disabled={isLoading}
                       >
                          {renderVoiceOptions(voices, customVoices, groupedStandardVoices)}
                       </select>
                   </div>
               ))}
             </div>
+            <div className="pt-2">
+              <button
+                onClick={onGenerate}
+                disabled={isGenerateDisabledDialogue}
+                className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
+              >
+                {isLoading ? <LoadingSpinner /> : 'Generate Speech'}
+              </button>
+            </div>
           </div>
+        );
+       case 'live':
+        return (
+            <div className="space-y-4">
+                <div>
+                    <label htmlFor="script-live" className="block text-sm font-medium text-gray-300 mb-2">
+                        Live Script
+                    </label>
+                    <textarea
+                        id="script-live"
+                        rows={10}
+                        className="w-full bg-gray-900/70 border border-gray-600 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition duration-200"
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        placeholder="Start typing to hear live speech..."
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Change voice or style anytime. Speech will update for new text.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                        <label htmlFor="voice-live" className="block text-sm font-medium text-gray-300 mb-2">
+                            AI Voice Model
+                        </label>
+                        <select
+                            id="voice-live"
+                            className="w-full bg-gray-900/70 border border-gray-600 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition duration-200 appearance-none"
+                            value={selectedVoice.id}
+                            onChange={(e) => {
+                                const voice = voices.find(v => v.id === e.target.value);
+                                if (voice) setSelectedVoice(voice);
+                            }}
+                        >
+                            {renderVoiceOptions(voices, customVoices, groupedStandardVoices)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="emotion-live" className="block text-sm font-medium text-gray-300 mb-2">
+                            Vocal Style
+                        </label>
+                        <select
+                            id="emotion-live"
+                            className="w-full bg-gray-900/70 border border-gray-600 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition duration-200 appearance-none"
+                            value={selectedEmotion.value}
+                            onChange={(e) => {
+                                const emotion = EMOTIONS.find(em => em.value === e.target.value);
+                                if (emotion) setSelectedEmotion(emotion);
+                            }}
+                        >
+                            {EMOTIONS.map((emotion) => (
+                                <option key={emotion.value} value={emotion.value}>
+                                    {emotion.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {selectedEmotion.value === 'custom' && (
+                        <div className="md:col-span-2">
+                            <label htmlFor="custom-style-live" className="block text-sm font-medium text-gray-300 mb-2">
+                                Custom Style Prompt
+                            </label>
+                            <textarea
+                                id="custom-style-live"
+                                rows={2}
+                                className="w-full bg-gray-900/70 border border-gray-600 rounded-md p-3 text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition duration-200"
+                                value={customStyle}
+                                onChange={(e) => setCustomStyle(e.target.value)}
+                                placeholder="e.g., a calm, measured tone with a medium pitch"
+                            />
+                        </div>
+                    )}
+                </div>
+                <div className="pt-2 space-y-3">
+                    <button
+                        onClick={onLivePreviewToggle}
+                        className={`w-full flex items-center justify-center font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg ${
+                            isLoading && isLivePreviewing ? 'bg-gray-600 cursor-not-allowed' :
+                            isLivePreviewing
+                            ? 'bg-red-600 hover:bg-red-500'
+                            : 'bg-green-600 hover:bg-green-500'
+                        }`}
+                        disabled={isLoading && isLivePreviewing}
+                    >
+                        {isLoading && isLivePreviewing ? <LoadingSpinner /> : isLivePreviewing ? 'Stop Live Preview' : 'Start Live Preview'}
+                    </button>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            onClick={onSaveLiveDraft}
+                            disabled={isLoading || !text.trim()}
+                            className="w-full flex items-center justify-center bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition duration-300"
+                        >
+                            Save Draft
+                        </button>
+                        <button
+                            onClick={onFinalizeLivePreview}
+                            disabled={isLoading || !text.trim()}
+                            className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition duration-300"
+                        >
+                            Finalize & Generate
+                        </button>
+                    </div>
+                </div>
+            </div>
         );
       case 'text':
       default:
+        const isGenerateDisabledText = isLoading || !text.trim();
         return (
-          <>
+          <div className="space-y-6">
             <div>
               <label htmlFor="script" className="block text-sm font-medium text-gray-300 mb-2">
                 Your Script
@@ -199,6 +330,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Enter text to synthesize..."
+                disabled={isLoading}
               />
               <p className="text-xs text-gray-500 mt-2 text-right">{text.length} characters</p>
             </div>
@@ -238,6 +370,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     const voice = voices.find(v => v.id === e.target.value);
                     if (voice) setSelectedVoice(voice);
                   }}
+                  disabled={isLoading}
                 >
                   {renderVoiceOptions(voices, customVoices, groupedStandardVoices)}
                 </select>
@@ -254,7 +387,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     const emotion = EMOTIONS.find(em => em.value === e.target.value);
                     if (emotion) setSelectedEmotion(emotion);
                   }}
-                  disabled={isAdvancedMode}
+                  disabled={isAdvancedMode || isLoading}
                 >
                   {EMOTIONS.map((emotion) => (
                     <option key={emotion.value} value={emotion.value}>
@@ -275,6 +408,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     const quality = AUDIO_QUALITIES.find(q => q.id === e.target.value);
                     if (quality) setSelectedQuality(quality);
                   }}
+                  disabled={isLoading}
                 >
                   {AUDIO_QUALITIES.map((quality) => (
                     <option key={quality.id} value={quality.id}>
@@ -295,17 +429,27 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                         value={customStyle}
                         onChange={(e) => setCustomStyle(e.target.value)}
                         placeholder="e.g., a calm, measured tone with a medium pitch"
+                        disabled={isLoading}
                     />
                  </div>
                )}
             </div>
-          </>
+            <div className="pt-2">
+              <button
+                onClick={onGenerate}
+                disabled={isGenerateDisabledText}
+                className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
+              >
+                {isLoading ? <LoadingSpinner /> : 'Generate Speech'}
+              </button>
+            </div>
+          </div>
         )
     }
   }
 
   return (
-    <div className="bg-gray-800/50 rounded-lg p-6 space-y-6 shadow-lg border border-gray-700">
+    <div className="bg-gray-800/50 rounded-lg p-6 shadow-lg border border-gray-700">
       
       <div className="flex border-b border-gray-700">
         <button 
@@ -329,29 +473,19 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
         >
           From Voice (Style)
         </button>
+         <button 
+          onClick={() => setInputMode('live')}
+          className={`px-4 py-2 text-sm font-medium transition-colors duration-200 ${inputMode === 'live' ? 'border-b-2 border-cyan-500 text-white' : 'text-gray-400 hover:text-white'}`}
+          aria-pressed={inputMode === 'live'}
+        >
+          Live Preview
+        </button>
       </div>
       
-      <div className="animate-fade-in">
+      <div className="animate-fade-in mt-6">
         {renderCurrentMode()}
       </div>
-      
-      {inputMode === 'voice' ? (
-         <button
-            onClick={onAnalyze}
-            disabled={isAnalyzeDisabled}
-            className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
-          >
-            {isLoading ? <LoadingSpinner /> : 'Analyze Voice Style'}
-          </button>
-      ) : (
-          <button
-            onClick={onGenerate}
-            disabled={isGenerateDisabled}
-            className="w-full flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
-          >
-            {isLoading ? <LoadingSpinner /> : 'Generate Speech'}
-          </button>
-      )}
+
     </div>
   );
 };
